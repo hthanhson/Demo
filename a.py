@@ -7,7 +7,7 @@ from streamlit_folium import st_folium
 st.set_page_config(layout="wide")
 st.title("📍 Map trạm")
 
-FILE_PATH = "du_lieu_tram.xlsx"
+FILE_PATH = r"e:\Test\du_lieu_tram.xlsx"
 
 # =========================
 # 1. LOAD
@@ -53,9 +53,14 @@ grouped = (
         "ma_diem": lambda x: list(x),
         "dia_chi": lambda x: list(x),
         "ma_tram": lambda x: list(x),
-        "done": lambda x: "done" if "done" in x.values else ""
+        "done": lambda x: list(x)  # ⭐ giữ list để check all_done chuẩn
     })
     .reset_index()
+)
+
+# ⭐ tất cả SN đều done
+grouped["all_done"] = grouped["done"].apply(
+    lambda x: len(x) > 0 and all(v == "done" for v in x)
 )
 
 # ⭐ nhiều mã điểm khác nhau tại cùng tọa độ
@@ -63,7 +68,7 @@ grouped["multi_point"] = grouped["ma_diem"].apply(
     lambda x: len(set(x)) > 1
 )
 
-# ⭐ trùng mã điểm tại cùng tọa độ (>=2 bản ghi cùng mã)
+# ⭐ trùng mã điểm tại cùng tọa độ
 grouped["duplicate_same_ma_diem"] = grouped["ma_diem"].apply(
     lambda x: len(x) > len(set(x))
 )
@@ -141,22 +146,24 @@ for _, row in grouped.iterrows():
     ma_diem_list = row["ma_diem"]
     dia_chi_list = row["dia_chi"]
     sn_list = row["ma_tram"]
-    done_flag = row["done"]
 
     is_multi_diff = row["multi_point"]
     is_duplicate_same = row["duplicate_same_ma_diem"]
+    all_done = row["all_done"]
 
     unique_ma_diem = set(ma_diem_list)
 
     # =====================
-    # 🎨 COLOR LOGIC
+    # 🎨 COLOR LOGIC (FIX CHUẨN)
     # =====================
-    if is_multi_diff:
-        color = "blue"  # khác mã điểm
+    if all_done:
+        color = "green"  # ✅ chỉ khi TẤT CẢ done
+    elif is_multi_diff:
+        color = "blue"
     elif is_duplicate_same:
-        color = "orange"  # ⭐ trùng mã điểm → vàng
+        color = "orange"
     else:
-        color = "green" if done_flag == "done" else "red"
+        color = "red"
 
     tooltip_text = (
         f"Nhiều mã điểm ({len(unique_ma_diem)})"
@@ -175,7 +182,7 @@ for _, row in grouped.iterrows():
         ).add_to(m)
 
     else:
-        # popup scroll
+        # ===== popup scroll =====
         detail_html = ""
         for md, dc, sn in zip(ma_diem_list, dia_chi_list, sn_list):
             detail_html += f"""
@@ -185,7 +192,6 @@ for _, row in grouped.iterrows():
             <hr>
             """
 
-        # link Google Maps
         gmap_url = f"https://www.google.com/maps?q={lat},{lon}"
 
         popup_html = f"""
