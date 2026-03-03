@@ -58,9 +58,14 @@ grouped = (
     .reset_index()
 )
 
-# phát hiện nhiều mã điểm cùng tọa độ
+# ⭐ nhiều mã điểm khác nhau tại cùng tọa độ
 grouped["multi_point"] = grouped["ma_diem"].apply(
     lambda x: len(set(x)) > 1
+)
+
+# ⭐ trùng mã điểm tại cùng tọa độ (>=2 bản ghi cùng mã)
+grouped["duplicate_same_ma_diem"] = grouped["ma_diem"].apply(
+    lambda x: len(x) > len(set(x))
 )
 
 # =========================
@@ -137,26 +142,32 @@ for _, row in grouped.iterrows():
     dia_chi_list = row["dia_chi"]
     sn_list = row["ma_tram"]
     done_flag = row["done"]
-    is_multi = row["multi_point"]
+
+    is_multi_diff = row["multi_point"]
+    is_duplicate_same = row["duplicate_same_ma_diem"]
 
     unique_ma_diem = set(ma_diem_list)
 
-    # màu marker
-    if is_multi and len(unique_ma_diem) > 1:
-        color = "blue"  # nhiều mã điểm khác nhau
+    # =====================
+    # 🎨 COLOR LOGIC
+    # =====================
+    if is_multi_diff:
+        color = "blue"  # khác mã điểm
+    elif is_duplicate_same:
+        color = "orange"  # ⭐ trùng mã điểm → vàng
     else:
         color = "green" if done_flag == "done" else "red"
 
     tooltip_text = (
         f"Nhiều mã điểm ({len(unique_ma_diem)})"
-        if is_multi and len(unique_ma_diem) > 1
+        if is_multi_diff
         else f"{ma_diem_list[0]} ({len(sn_list)} SN)"
     )
 
     # ===============================
     # CASE: khác mã điểm -> KHÔNG popup
     # ===============================
-    if is_multi and len(unique_ma_diem) > 1:
+    if is_multi_diff:
         folium.Marker(
             location=[lat, lon],
             tooltip=tooltip_text,
@@ -164,7 +175,7 @@ for _, row in grouped.iterrows():
         ).add_to(m)
 
     else:
-        # popup có scroll nếu nhiều dòng
+        # popup scroll
         detail_html = ""
         for md, dc, sn in zip(ma_diem_list, dia_chi_list, sn_list):
             detail_html += f"""
@@ -175,7 +186,7 @@ for _, row in grouped.iterrows():
             """
 
         popup_html = f"""
-        <div style="max-height:150px; overflow-y:auto; width:260px; font-size:13px; line-height:1.4;">
+        <div style="max-height:150px; overflow-y:auto; width:260px; font-size:13px;">
             <b>Tọa độ:</b> {lat:.5f}, {lon:.5f}<br>
             <b>Tổng SN:</b> {len(sn_list)}<br>
             <hr>
