@@ -185,9 +185,26 @@ for _, row in grouped.iterrows():
             <hr>
             """
 
+        # link Google Maps
+        gmap_url = f"https://www.google.com/maps?q={lat},{lon}"
+
         popup_html = f"""
-        <div style="max-height:150px; overflow-y:auto; width:260px; font-size:13px;">
-            <b>Tọa độ:</b> {lat:.5f}, {lon:.5f}<br>
+        <div style="max-height:150px; overflow-y:auto; width:260px; font-size:13px; line-height:1.4;">
+            
+            <b>Tọa độ:</b> {lat:.5f}, {lon:.5f}
+            <a href="{gmap_url}" target="_blank"
+            style="
+                float:right;
+                padding:2px 6px;
+                background:#4285F4;
+                color:white;
+                text-decoration:none;
+                border-radius:4px;
+                font-size:11px;">
+                📍 Map
+            </a>
+            <br>
+
             <b>Tổng SN:</b> {len(sn_list)}<br>
             <hr>
             {detail_html}
