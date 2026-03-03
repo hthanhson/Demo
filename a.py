@@ -7,7 +7,7 @@ from streamlit_folium import st_folium
 st.set_page_config(layout="wide")
 st.title("📍 Map trạm")
 
-FILE_PATH = r"e:\Test\du_lieu_tram.xlsx"
+FILE_PATH = r"e:\du_lieu_tram.xlsx"
 
 # =========================
 # 1. LOAD
