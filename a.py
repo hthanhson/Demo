@@ -233,6 +233,7 @@ grouped = (
         "ma_diem": lambda x: list(x),
         "dia_chi": lambda x: list(x),
         "ma_tram": lambda x: list(x),
+        "xa_phuong": lambda x: list(x),
         "done": lambda x: list(x)
     })
     .reset_index()
@@ -321,54 +322,57 @@ for _, row in grouped.iterrows():
 
     gmap = f"https://www.google.com/maps?q={lat},{lon}"
 
-    popup = f"""
+    popup_html = f"""
     <div style="width:250px">
 
-    <b>Tọa độ:</b> {lat},{lon}
+        <b>Tọa độ:</b> {lat},{lon}
 
-    <a href="{gmap}" target="_blank"
-    style="
-    display:inline-block;
-    padding:3px 8px;
-    border:1px solid #4285F4;
-    border-radius:6px;
-    color:#4285F4;
-    text-decoration:none;
-    font-size:12px;
-    ">
-    📍 Map
-    </a>
+        <a href="{gmap}" target="_blank"
+        style="
+        display:inline-block;
+        padding:3px 8px;
+        border:1px solid #4285F4;
+        border-radius:6px;
+        color:#4285F4;
+        text-decoration:none;
+        font-size:12px;
+        ">
+        📍 Map
+        </a>
 
-    <hr>
+        <hr>
 
-    <b>Tổng SN:</b> {len(row['ma_tram'])}
+        <b>Tổng SN:</b> {len(row['ma_tram'])}
 
-    <hr>
+        <hr>
 
-    <div style="max-height:120px;overflow-y:auto">
-
+        <div style="max-height:120px;overflow-y:auto">
     """
 
-    for md, sn, done in zip(
+    for md, sn, dc, xp,done in zip(
         row["ma_diem"],
         row["ma_tram"],
+        row["dia_chi"],
+        row["xa_phuong"],
         row["done"]
     ):
 
         status = "✅" if done == "done" else "❌"
 
-        popup += f"""
-        <b>{md}</b><br>
-        SN: {sn} {status}<br>
+        popup_html += f"""
+        <b>Mã điểm:</b> {md}<br>
+        <b>SN:</b> {sn}<br>
+        <b>Địa chỉ:</b> {dc}<br>
+        <b>Xã phường:</b> {xp}<br>
         <hr>
         """
 
-    popup += "</div></div>"
+    popup_html += "</div></div>"
 
     folium.Marker(
         location=[lat, lon],
         tooltip=f"{row['ma_diem'][0]} ({len(row['ma_tram'])} SN)",
-        popup=folium.Popup(popup, max_width=300),
+        popup=folium.Popup(popup_html, max_width=300),
         icon=folium.Icon(color=color, icon="flag"),
     ).add_to(m)
 
