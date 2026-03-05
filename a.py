@@ -2,22 +2,157 @@ import pandas as pd
 import folium
 import streamlit as st
 from streamlit_folium import st_folium
+import re
 
-# streamlit run e:/a.py
+# streamlit run e:/Test/a.py
 
 st.set_page_config(layout="wide")
 st.title("📍 Map trạm")
 
-# ===== SESSION STATE =====
+# =========================
+# SESSION
+# =========================
 if "search_location" not in st.session_state:
     st.session_state.search_location = None
+
 if "search_mode" not in st.session_state:
     st.session_state.search_mode = None
 
 FILE_PATH = "du_lieu_tram.xlsx"
 
 # =========================
-# 1. LOAD
+# PARSE COORDINATE
+# =========================
+def dms_to_decimal(dms):
+
+    regex = r"(\d+)[°\s]+(\d+)'([\d\.]+)\"?([NSEW])"
+    match = re.search(regex, dms)
+
+    if not match:
+        return None
+
+    deg = float(match.group(1))
+    minute = float(match.group(2))
+    sec = float(match.group(3))
+    direction = match.group(4)
+
+    decimal = deg + minute / 60 + sec / 3600
+
+    if direction in ["S", "W"]:
+        decimal *= -1
+
+    return decimal
+
+
+# def parse_lat_lon(lat, lon):
+
+#     # case 1: bình thường
+#     try:
+#         if pd.notna(lat) and pd.notna(lon):
+#             return float(lat), float(lon)
+#     except:
+#         pass
+
+#     if pd.isna(lat):
+#         return None, None
+
+#     text = str(lat).strip()
+
+#     # case 2: decimal pair
+#     if "," in text and text.count(",") == 1:
+#         try:
+#             a, b = text.split(",")
+#             return float(a), float(b)
+#         except:
+#             pass
+
+#     # case 3: N E format
+#     if "N" in text and "E" in text:
+
+#         parts = text.replace(",", ".").split()
+
+#         if len(parts) >= 2:
+#             try:
+#                 lat_val = float(parts[0].replace("N", ""))
+#                 lon_val = float(parts[1].replace("E", ""))
+#                 return lat_val, lon_val
+#             except:
+#                 pass
+
+#     # case 4: DMS
+#     if "°" in text:
+
+#         lat_val = dms_to_decimal(text)
+#         lon_match = re.findall(r"\d+°\d+'\d+\.?\d*\"?[EW]", text)
+
+#         if lat_val and lon_match:
+#             lon_val = dms_to_decimal(lon_match[0])
+#             return lat_val, lon_val
+
+#     return None, None
+
+def parse_lat_lon(lat, lon):
+
+    # ===== case 1: lat lon chuẩn =====
+    try:
+        if pd.notna(lat) and pd.notna(lon):
+            return float(lat), float(lon)
+    except:
+        pass
+
+    if pd.isna(lat):
+        return None, None
+
+    text = str(lat).strip()
+
+    # ===== case 2: 21.195397,105.313589 =====
+    if "," in text and text.count(",") == 1:
+        try:
+            a, b = text.split(",")
+            return float(a), float(b)
+        except:
+            pass
+
+    # ===== case 3: 20.987933°N, 105.636434°E =====
+    pattern = r"([\d\.]+)°?\s*[NS],?\s*([\d\.]+)°?\s*[EW]"
+    match = re.search(pattern, text)
+
+    if match:
+        lat_val = float(match.group(1))
+        lon_val = float(match.group(2))
+        return lat_val, lon_val
+
+    # ===== case 4: 21,1708N 105,3934E =====
+    if "N" in text and "E" in text:
+
+        text = text.replace(",", ".")
+        parts = text.split()
+
+        if len(parts) >= 2:
+            try:
+                lat_val = float(parts[0].replace("N", ""))
+                lon_val = float(parts[1].replace("E", ""))
+                return lat_val, lon_val
+            except:
+                pass
+
+    # ===== case 5: DMS =====
+    if "°" in text and "'" in text:
+
+        try:
+            lat_match = re.search(r"\d+°\d+'\d+\.?\d*\"?[NS]", text)
+            lon_match = re.search(r"\d+°\d+'\d+\.?\d*\"?[EW]", text)
+
+            if lat_match and lon_match:
+                lat_val = dms_to_decimal(lat_match.group())
+                lon_val = dms_to_decimal(lon_match.group())
+                return lat_val, lon_val
+        except:
+            pass
+
+    return None, None
+# =========================
+# LOAD DATA
 # =========================
 df = pd.read_excel(FILE_PATH)
 df.columns = df.columns.str.strip()
@@ -33,7 +168,7 @@ df = df.rename(columns={
 })
 
 # =========================
-# 2. ĐẢM BẢO CỘT
+# ENSURE COLUMN
 # =========================
 required_cols = [
     "ma_tram",
@@ -43,7 +178,7 @@ required_cols = [
     "tinh",
     "lat",
     "lon",
-    "done",
+    "done"
 ]
 
 for col in required_cols:
@@ -51,23 +186,46 @@ for col in required_cols:
         df[col] = ""
 
 # =========================
-# 3. CLEAN
+# CLEAN DATA
 # =========================
-df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
-df["lon"] = pd.to_numeric(df["lon"], errors="coerce")
+errors = []
+
+new_lat = []
+new_lon = []
+
+for i, row in df.iterrows():
+
+    lat, lon = parse_lat_lon(row["lat"], row["lon"])
+
+    if lat is None or lon is None:
+        errors.append(i)
+
+    new_lat.append(lat)
+    new_lon.append(lon)
+
+df["lat"] = new_lat
+df["lon"] = new_lon
+
+# báo lỗi
+if len(errors) > 0:
+
+    st.warning(f"⚠ Có {len(errors)} dòng lỗi tọa độ không hiển thị")
+
+    with st.expander("Xem dòng lỗi"):
+        st.write(df.loc[errors][["ma_tram", "ma_diem", "lat", "lon"]])
+
 df = df.dropna(subset=["lat", "lon"])
 
 df["lat"] = df["lat"].astype(float)
 df["lon"] = df["lon"].astype(float)
-df["ma_tram"] = df["ma_tram"].astype(str).str.strip()
-df["ma_diem"] = df["ma_diem"].astype(str).str.strip()
-df["dia_chi"] = df["dia_chi"].astype(str)
-df["xa_phuong"] = df["xa_phuong"].astype(str)
-df["tinh"] = df["tinh"].astype(str)
+
+df["ma_tram"] = df["ma_tram"].astype(str)
+df["ma_diem"] = df["ma_diem"].astype(str)
+
 df["done"] = df["done"].fillna("").astype(str)
 
 # =========================
-# 4. GROUP THEO TỌA ĐỘ
+# GROUP
 # =========================
 grouped = (
     df.groupby(["lat", "lon"])
@@ -93,7 +251,7 @@ grouped["duplicate_same_ma_diem"] = grouped["ma_diem"].apply(
 )
 
 # =========================
-# 🔍 SEARCH TRẠM (GIỮ NGUYÊN)
+# SEARCH
 # =========================
 st.sidebar.header("🔍 Tìm kiếm trạm")
 
@@ -104,7 +262,9 @@ keyword = st.sidebar.text_input(
 filtered = grouped.copy()
 
 if keyword:
-    key = keyword.lower().strip()
+
+    key = keyword.lower()
+
     filtered = grouped[
         grouped.apply(
             lambda r: (
@@ -112,7 +272,6 @@ if keyword:
                 or key in str(r["lon"])
                 or any(key in str(md).lower() for md in r["ma_diem"])
                 or any(key in str(sn).lower() for sn in r["ma_tram"])
-                or any(key in str(dc).lower() for dc in r["dia_chi"])
             ),
             axis=1,
         )
@@ -121,155 +280,100 @@ if keyword:
 st.sidebar.write(f"🔎 Tìm thấy: {len(filtered)} điểm")
 
 # =========================
-# 📍 NHẢY THEO TỌA ĐỘ
-# =========================
-st.sidebar.markdown("---")
-st.sidebar.header("📍 Nhảy tới tọa độ")
-
-coord_input = st.sidebar.text_input(
-    "Nhập lat,lon (vd: 21.0285,105.8542)"
-)
-
-
-def parse_lat_lon(text):
-    try:
-        parts = text.split(",")
-        if len(parts) == 2:
-            return float(parts[0].strip()), float(parts[1].strip())
-    except:
-        pass
-    return None, None
-
-
-if st.sidebar.button("Tới tọa độ"):
-    lat_val, lon_val = parse_lat_lon(coord_input)
-
-    if lat_val is not None and lon_val is not None:
-        st.session_state.search_location = {
-            "lat": lat_val,
-            "lon": lon_val,
-            "address": f"{lat_val}, {lon_val}"
-        }
-        st.session_state.search_mode = "coord"
-        st.sidebar.success("✅ Đã nhảy tới tọa độ")
-    else:
-        st.sidebar.error("❌ Sai định dạng. Ví dụ: 21.0285,105.8542")
-
-# =========================
-# 🎯 CHỌN TRẠM
-# =========================
-selected_row = None
-
-if len(filtered) == 1:
-    selected_row = filtered.iloc[0]
-
-elif len(filtered) > 1:
-    options = filtered.apply(
-        lambda r: f'{r["lat"]:.5f},{r["lon"]:.5f} | {len(r["ma_tram"])} SN',
-        axis=1,
-    ).tolist()
-
-    choice = st.sidebar.selectbox("Chọn điểm:", options)
-    selected_row = filtered.iloc[options.index(choice)]
-
-# =========================
 # MAP CENTER
 # =========================
-if st.session_state.search_location is not None:
-    center_lat = st.session_state.search_location["lat"]
-    center_lon = st.session_state.search_location["lon"]
-    zoom_start = 17
-elif selected_row is not None:
-    center_lat = selected_row["lat"]
-    center_lon = selected_row["lon"]
+if len(filtered) == 1:
+
+    center_lat = filtered.iloc[0]["lat"]
+    center_lon = filtered.iloc[0]["lon"]
     zoom_start = 16
+
 else:
+
     center_lat = grouped["lat"].mean()
     center_lon = grouped["lon"].mean()
     zoom_start = 12
 
 m = folium.Map(
     location=[center_lat, center_lon],
-    zoom_start=zoom_start,
-    tiles="OpenStreetMap"
+    zoom_start=zoom_start
 )
 
 # =========================
-# MARKER TRẠM (CÓ POPUP)
+# MARKER
 # =========================
 for _, row in grouped.iterrows():
 
-    lat = float(row["lat"])
-    lon = float(row["lon"])
+    lat = row["lat"]
+    lon = row["lon"]
 
     if row["all_done"]:
         color = "green"
+
     elif row["multi_point"]:
         color = "blue"
+
     elif row["duplicate_same_ma_diem"]:
         color = "orange"
+
     else:
         color = "red"
 
-    tooltip_text = f"{row['ma_diem'][0]} ({len(row['ma_tram'])} SN)"
+    gmap = f"https://www.google.com/maps?q={lat},{lon}"
 
-    lat_str = f"{lat:.8f}"
-    lon_str = f"{lon:.8f}"
-    gg_link = f"https://www.google.com/maps?q={lat_str},{lon_str}"
+    popup = f"""
+    <div style="width:250px">
 
-    popup_html = f"""
-    <div style="width:260px;font-size:13px">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-            <b>Tọa độ: {lat_str}, {lon_str}</b>
-            <a href="{gg_link}" target="_blank"
-            style="text-decoration:none;">
-                <button style="
-                    background:#4285F4;
-                    color:white;
-                    border:none;
-                    padding:4px 10px;
-                    border-radius:6px;
-                    cursor:pointer;
-                    font-size:10px;">
-                    📍 Map
-                </button>
-            </a>
-        </div>
-        <hr style="margin:6px 0">
-        <div><b>Tổng SN:</b> {len(row['ma_tram'])}</div>
-        <br>
-        <div><b>Mã điểm:</b> {row['ma_diem'][0]}</div>
-        <div><b>Địa chỉ:</b> {row['dia_chi'][0]}</div>
-        <div><b>SN:</b> {row['ma_tram'][0]}</div>
-    </div>
+    <b>Tọa độ:</b> {lat},{lon}
+
+    <a href="{gmap}" target="_blank"
+    style="
+    display:inline-block;
+    padding:3px 8px;
+    border:1px solid #4285F4;
+    border-radius:6px;
+    color:#4285F4;
+    text-decoration:none;
+    font-size:12px;
+    ">
+    📍 Map
+    </a>
+
+    <hr>
+
+    <b>Tổng SN:</b> {len(row['ma_tram'])}
+
+    <hr>
+
+    <div style="max-height:120px;overflow-y:auto">
+
     """
+
+    for md, sn, done in zip(
+        row["ma_diem"],
+        row["ma_tram"],
+        row["done"]
+    ):
+
+        status = "✅" if done == "done" else "❌"
+
+        popup += f"""
+        <b>{md}</b><br>
+        SN: {sn} {status}<br>
+        <hr>
+        """
+
+    popup += "</div></div>"
 
     folium.Marker(
         location=[lat, lon],
-        tooltip=tooltip_text,
-        popup=folium.Popup(popup_html, max_width=300),
+        tooltip=f"{row['ma_diem'][0]} ({len(row['ma_tram'])} SN)",
+        popup=folium.Popup(popup, max_width=300),
         icon=folium.Icon(color=color, icon="flag"),
     ).add_to(m)
 
 # =========================
-# 📍 MARKER SEARCH (ICON GIỐNG GOOGLE MAP)
-# =========================
-if st.session_state.search_location:
-    folium.Marker(
-        location=[
-            st.session_state.search_location["lat"],
-            st.session_state.search_location["lon"],
-        ],
-        popup=folium.Popup(
-            f"<b>📍 Điểm tìm kiếm</b><br>{st.session_state.search_location['address']}",
-            max_width=300,
-        ),
-        tooltip="📍 Điểm nhập tọa độ",
-        icon=folium.Icon(color="purple", icon="search", prefix="fa"),
-    ).add_to(m)
-
-# =========================
-# HIỂN THỊ MAP
+# SHOW MAP
 # =========================
 st_data = st_folium(
     m,
@@ -281,97 +385,48 @@ st_data = st_folium(
 clicked = st_data.get("last_object_clicked")
 
 # =========================
-# ➕➖ ADD / DELETE ĐIỂM TỌA ĐỘ
-# =========================
-if (
-    clicked
-    and st.session_state.search_location
-    and st.session_state.search_mode == "coord"
-):
-
-    lat_click = float(clicked["lat"])
-    lon_click = float(clicked["lng"])
-    EPS = 1e-9
-
-    is_same_search_point = (
-        abs(lat_click - st.session_state.search_location["lat"]) < EPS
-        and abs(lon_click - st.session_state.search_location["lon"]) < EPS
-    )
-
-    if is_same_search_point:
-
-        existed_rows = df[
-            ((df["lat"] - lat_click).abs() < EPS)
-            & ((df["lon"] - lon_click).abs() < EPS)
-        ]
-
-        st.subheader("⚙️ Quản lý điểm tọa độ")
-
-        # ===== ADD =====
-        if len(existed_rows) == 0:
-            if st.button("➕ Add điểm này"):
-                new_row = {
-                    "ma_tram": "n/a",
-                    "ma_diem": "n/a",
-                    "dia_chi": "n/a",
-                    "xa_phuong": "n/a",
-                    "tinh": "n/a",
-                    "lat": lat_click,
-                    "lon": lon_click,
-                    "done": ""
-                }
-
-                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-                df.to_excel(FILE_PATH, index=False)
-
-                st.success("✅ Đã thêm điểm mới")
-                st.rerun()
-
-        # ===== DELETE =====
-        else:
-            if st.button("🗑️ Delete điểm này"):
-                df = df.drop(existed_rows.index)
-                df.to_excel(FILE_PATH, index=False)
-
-                st.success("🗑️ Đã xóa điểm")
-                st.rerun()
-
-# =========================
-# DONE THEO SN (GIỮ NGUYÊN)
+# DONE SN
 # =========================
 if clicked:
-    lat_click = float(clicked["lat"])
-    lon_click = float(clicked["lng"])
+
+    lat_click = clicked["lat"]
+    lon_click = clicked["lng"]
 
     EPS = 1e-9
 
-    point_rows = df[
+    rows = df[
         ((df["lat"] - lat_click).abs() < EPS)
         & ((df["lon"] - lon_click).abs() < EPS)
-    ].copy()
+    ]
 
-    if len(point_rows) > 0:
+    if len(rows) > 0:
 
-        st.subheader(f"🔧 Có {len(point_rows)} SN tại điểm này")
+        st.subheader(f"🔧 Có {len(rows)} SN tại điểm này")
 
-        for idx, row in point_rows.iterrows():
-            col1, col2, col3 = st.columns([3, 2, 2])
+        for idx, row in rows.iterrows():
+
+            col1, col2, col3 = st.columns([3,2,2])
 
             with col1:
-                st.write(f"**SN:** {row['ma_tram']}")
+                st.write(f"SN: {row['ma_tram']}")
                 st.caption(f"Mã điểm: {row['ma_diem']}")
 
             with col2:
-                status = "✅ DONE" if row.get("done") == "done" else "❌ Chưa xong"
+
+                status = "✅ DONE" if row["done"]=="done" else "❌ Chưa xong"
                 st.write(status)
 
             with col3:
-                if row.get("done") != "done":
+
+                if row["done"]!="done":
+
                     if st.button(
                         f"Hoàn thành {row['ma_tram']}",
-                        key=f"done_{idx}",
+                        key=f"done_{idx}"
                     ):
-                        df.loc[idx, "done"] = "done"
-                        df.to_excel(FILE_PATH, index=False)
-                        st.success(f"🎉 Đã DONE SN {row['ma_tram']}")
+
+                        df.loc[idx,"done"]="done"
+                        df.to_excel(FILE_PATH,index=False)
+
+                        st.success(f"🎉 DONE {row['ma_tram']}")
                         st.rerun()
