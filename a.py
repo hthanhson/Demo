@@ -234,6 +234,7 @@ grouped = (
         "dia_chi": lambda x: list(x),
         "ma_tram": lambda x: list(x),
         "xa_phuong": lambda x: list(x),
+        "tinh": lambda x: list(x),
         "done": lambda x: list(x)
     })
     .reset_index()
@@ -349,11 +350,12 @@ for _, row in grouped.iterrows():
         <div style="max-height:120px;overflow-y:auto">
     """
 
-    for md, sn, dc, xp,done in zip(
+    for md, sn, dc, xp,ti, done in zip(
         row["ma_diem"],
         row["ma_tram"],
         row["dia_chi"],
         row["xa_phuong"],
+        row["tinh"],
         row["done"]
     ):
 
@@ -364,6 +366,7 @@ for _, row in grouped.iterrows():
         <b>SN:</b> {sn}<br>
         <b>Địa chỉ:</b> {dc}<br>
         <b>Xã phường:</b> {xp}<br>
+        <b>Tỉnh:</b> {ti}<br>
         <hr>
         """
 
